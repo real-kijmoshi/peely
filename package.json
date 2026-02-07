@@ -1,0 +1,32 @@
+{
+  "name": "peely",
+  "version": "0.9.1",
+  "main": "cli.js",
+  "bin": {
+    "peely": "./cli.js"
+  },
+  "scripts": {
+    "start": "node cli.js",
+    "daemon:start": "node cli.js daemon start",
+    "daemon:stop": "node cli.js daemon stop",
+    "daemon:restart": "node cli.js daemon restart",
+    "daemon:status": "node cli.js daemon status",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "description": "Your personal AI assistant",
+  "dependencies": {
+    "@clack/prompts": "^1.0.0",
+    "axios": "^1.13.4",
+    "better-sqlite3": "^12.6.2",
+    "chalk": "^4.1.2",
+    "discord.js": "^14.25.1",
+    "ollama": "^0.6.3",
+    "openai": "^6.18.0",
+    "ora": "^5.4.1",
+    "qrcode-terminal": "^0.12.0",
+    "quick.db": "^9.1.7"
+  }
+}
