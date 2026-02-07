@@ -5,8 +5,8 @@
 **Your Personal AI Assistant in the Terminal**
 
 [![Version](https://img.shields.io/badge/version-0.9.1-blue.svg)](https://github.com/real-kijmoshi/peely)
-[![License](https://img.shields.io/badge/license-ISC-green.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D14-brightgreen.svg)](https://nodejs.org)
+[![npm](https://img.shields.io/npm/v/peely.svg)](https://www.npmjs.com/package/peely)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 *A lightweight, extensible command-line AI assistant powered by GitHub Copilot*
 
@@ -22,9 +22,7 @@
 - **🔌 Extensible Plugin System** — Custom tools, timers, and integrations
 - **💬 Multiple Interfaces** — Terminal TUI, Discord bot, or CLI commands
 - **⚡ Daemon Mode** — Persistent background operation with shared state
-- **🎯 GitHub Copilot Powered** — Leverage GitHub Copilot's AI capabilities
-- **📦 Portable** — Build native executables for macOS and Windows
-- **🔄 Hot Reload** — Update code without losing conversation history
+- **🎯 GitHub Copilot Support** — Leverage GitHub Copilot's AI capabilities
 
 ## 🎯 Why Peely?
 
@@ -52,17 +50,30 @@ npm install
 npm start
 ```
 
+Alternatively, install the published package from npm:
+
+```bash
+# Install globally to use the `peely` CLI
+npm install -g peely
+
+# Or install locally in a project
+npm install peely
+
+# Run installed CLI
+peely
+```
+
 ### First-Time Setup
 
 ```bash
 # Run the setup wizard
-node cli.js setup
+npx peely setup
 
 # Configure your AI model
-node cli.js model
+npx peely model
 
 # Start using Peely!
-node cli.js chat "Hello, Peely!"
+npx peely chat "Hello, Peely!"
 ```
 
 ## 💡 Usage
@@ -74,7 +85,7 @@ Launch the interactive TUI for a conversation-style experience:
 ```bash
 npm start
 # or
-node cli.js
+npx peely
 ```
 
 **Available Commands:**
@@ -90,13 +101,13 @@ Quick AI queries without entering interactive mode:
 
 ```bash
 # Ask a question
-node cli.js chat "What's the weather like?"
+npx peely chat "What's the weather like?"
 
 # Get help
-node cli.js help
+npx peely help
 
 # Check status
-node cli.js status
+npx peely status
 ```
 
 ### Discord Bot
@@ -105,10 +116,10 @@ Run Peely as a Discord bot:
 
 ```bash
 # Set up Discord bot token
-node cli.js pair discord setup
+npx peely pair discord setup
 
 # Start Discord bot
-node cli.js discord
+npx peely discord
 ```
 
 ## ⚡ Daemon Mode
@@ -120,7 +131,7 @@ The daemon runs Peely in the background, providing persistent operation, faster 
 ### 🎬 Starting the Daemon
 
 ```bash
-node cli.js daemon start
+npx peely daemon start
 # or
 npm run daemon:start
 ```
@@ -138,16 +149,16 @@ Once running, all CLI commands automatically connect to the daemon:
 
 ```bash
 # Chat (connects to daemon automatically)
-node cli.js chat "Explain quantum computing"
+npx peely chat "Explain quantum computing"
 
 # Check daemon status
-node cli.js daemon status
+npx peely daemon status
 
 # Restart daemon (useful after updates)
-node cli.js daemon restart
+npx peely daemon restart
 
 # Stop daemon
-node cli.js daemon stop
+npx peely daemon stop
 ```
 
 ### 🔄 Updating Peely
@@ -156,7 +167,7 @@ When you update Peely, simply restart the daemon to reload all code:
 
 ```bash
 git pull
-node cli.js daemon restart
+npx peely daemon restart
 ```
 
 **No configuration loss!** Your conversation history and settings are preserved.
