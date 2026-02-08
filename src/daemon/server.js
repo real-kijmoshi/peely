@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const chalk = require("chalk");
+const PATHS = require("../utils/paths");
 
 /**
  * peely Daemon Server
@@ -22,10 +23,9 @@ class DaemonServer {
     this.interfaces = {};
     this.socketPath = this._getSocketPath();
     
-    // Ensure data directory exists
-    const dataDir = path.resolve(process.cwd(), "data");
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+    // Ensure data directory exists (handled by paths.js, but be safe)
+    if (!fs.existsSync(PATHS.data)) {
+      fs.mkdirSync(PATHS.data, { recursive: true });
     }
   }
 

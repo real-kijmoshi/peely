@@ -1,7 +1,8 @@
 const fs = require("fs");
 const path = require("path");
+const PATHS = require("./paths");
 
-const BASE = path.resolve(process.cwd(), "data", "conversations");
+const BASE = PATHS.conversations;
 
 const ensureDir = () => {
   if (!fs.existsSync(BASE)) fs.mkdirSync(BASE, { recursive: true });

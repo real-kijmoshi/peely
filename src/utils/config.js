@@ -1,7 +1,7 @@
 const fs = require("fs");
-const path = require("path");
+const PATHS = require("./paths");
 
-const CONFIG_PATH = path.resolve(process.cwd(), "config.json");
+const CONFIG_PATH = PATHS.config;
 
 if (!fs.existsSync(CONFIG_PATH)) {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify({}, null, 4));

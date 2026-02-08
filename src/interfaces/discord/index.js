@@ -4,16 +4,14 @@ const ai = require("../../ai");
 const memory = require("../../utils/memory");
 const chalk = require("chalk");
 const fs = require("fs");
-
-// ── Ensure data dir ──
-if (!fs.existsSync("./data")) fs.mkdirSync("./data", { recursive: true });
+const PATHS = require("../../utils/paths");
 
 let db = null;
 const getDb = async () => {
   if (db) return db;
   const { SqliteDriver, QuickDB } = require("quick.db");
   try {
-    const driver = new SqliteDriver("./data/quick.db");
+    const driver = new SqliteDriver(PATHS.quickDb);
     db = new QuickDB({ driver });
   } catch (err) {
     console.error("DB init error, falling back to in-memory DB:", err?.message || String(err));
@@ -38,6 +36,24 @@ const saveConversation = (userId) => {
   const history = conversations.get(userId);
   if (history) memory.save(`discord-${userId}`, history);
 };
+
+/** Check whether a Discord user is allowed to chat */
+const isPaired = (userId) => {
+  const paired = config.get("interfaces.discord.pairedUsers") || [];
+  return paired.includes(userId);
+};
+
+const notPairedEmbed = () =>
+  new EmbedBuilder()
+    .setColor(0xfbbf24)
+    .setAuthor({ name: "🍌 peely" })
+    .setDescription(
+      "🔒 **You need to pair first!**\n\n" +
+      "Use the `/pair` command to get a pairing code, then run:\n" +
+      "• **CLI:** `peely pair discord <code>`\n" +
+      "• **TUI:** `/pair discord <code>`"
+    )
+    .setTimestamp();
 
 // ── Slash commands definition ──
 const commands = [
@@ -146,6 +162,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (commandName === "ask") {
+      if (!isPaired(user.id)) {
+        await interaction.editReply({ embeds: [notPairedEmbed()] });
+        return;
+      }
+
       const question = interaction.options.getString("question");
 
       const history = getConversation(user.id);
@@ -216,6 +237,12 @@ client.on(Events.MessageCreate, async (message) => {
   let content = message.content.replace(/<@!?\d+>/g, "").trim();
   if (!content) return;
 
+  // Only paired users can chat
+  if (!isPaired(message.author.id)) {
+    await message.reply({ embeds: [notPairedEmbed()] }).catch(() => {});
+    return;
+  }
+
   try {
     await message.channel.sendTyping();
 
@@ -253,10 +280,10 @@ client.on(Events.MessageCreate, async (message) => {
 const start = async () => {
   const token = config.get("interfaces.discord.token");
   if (!token) {
-    const { text, intro } = require("@clack/prompts");
+    const { text, intro, isCancel } = require("@clack/prompts");
     intro("Discord Bot Setup");
     const newToken = await text({ message: "Enter your Discord Bot Token:" });
-    if (typeof newToken !== "string" || !newToken.trim()) {
+    if (isCancel(newToken) || !newToken || !newToken.trim()) {
       throw new Error("Discord token is required.");
     }
     config.set("interfaces.discord.token", newToken.trim());

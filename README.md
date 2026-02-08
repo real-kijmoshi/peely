@@ -4,7 +4,7 @@
 
 **Your Personal AI Assistant in the Terminal**
 
-[![Version](https://img.shields.io/badge/version-0.9.1-blue.svg)](https://github.com/real-kijmoshi/peely)
+[![GitHub issues](https://img.shields.io/github/issues/real-kijmoshi/peely)](https://github.com/real-kijmoshi/peely/issues)
 [![npm](https://img.shields.io/npm/v/peely.svg)](https://www.npmjs.com/package/peely)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -33,6 +33,9 @@ Peely brings AI assistance directly to your command line with a focus on speed, 
 - **Node.js** (LTS version 14 or higher)
 - **npm** (bundled with Node.js)
 - **GitHub Copilot** subscription (for AI features)
+
+## ⚠️ Important Security Note
+Versions prior to 0.9.4 are vulnerable to a critical security issue. Please update to the latest version immediately.
 
 ## 🚀 Quick Start
 
@@ -216,30 +219,6 @@ npm test
 
 Configuration is stored in `config.json`. You can modify settings using CLI commands or by editing the file directly.
 
-## 📦 Release Process
-
-### Creating Checksums
-
-```bash
-shasum -a 256 build/peely-macos > build/peely-macos.sha256
-shasum -a 256 build/peely-windows.exe > build/peely-windows.exe.sha256
-```
-
-### Publishing a Release
-
-```bash
-# Create and push a tag
-git tag -a v1.0.0 -m "Release 1.0.0"
-git push origin v1.0.0
-
-# Create GitHub release with artifacts
-gh release create v1.0.0 \
-  build/peely-macos \
-  build/peely-windows.exe \
-  --title "v1.0.0" \
-  --notes-file RELEASE.md
-```
-
 ## 🐛 Troubleshooting
 
 
@@ -270,6 +249,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 - GitHub: [@real-kijmoshi](https://github.com/real-kijmoshi)
 ---
+
 
 <div align="center">
 

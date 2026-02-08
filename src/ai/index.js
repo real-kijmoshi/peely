@@ -1,6 +1,7 @@
 const { intro, select, isCancel } = require("@clack/prompts");
 const fs = require("fs");
 const path = require("path");
+const chalk = require("chalk");
 const config = require("../utils/config");
 const pluginModule = require("../plugins");
 
@@ -92,29 +93,37 @@ const chooseModel = async () => {
     options: providers.map((p) => ({ value: p.name, label: p.name })),
   });
 
-  if (isCancel(provider)) return null;
+  if (!provider) return null; // cancelled
 
   const providerModule = providers.find((p) => p.name === provider);
+
+  let modelList;
+  try {
+    modelList = await providerModule.models();
+  } catch (err) {
+    console.log(chalk.red(`  ✗ Failed to fetch models: ${err.message}`));
+    return null;
+  }
 
   const model = await select({
     message: `Select a model for ${provider}:`,
     options: [
-      { value: "back", label: "Back" },
-      ...(await providerModule.models()).map((m) => ({
+      { value: "back", label: "← Back" },
+      ...modelList.map((m) => ({
         value: m.id,
         label: m.name,
       })),
     ],
   });
 
-  if (isCancel(model)) return null;
+  if (!model) return null; // cancelled
 
   if (model === "back") {
     return chooseModel();
   }
 
   config.set("ai.model", `${provider}:${model}`);
-  console.log(`✅ Selected model: ${provider}:${model}`);
+  console.log(chalk.green(`  ✓ Selected model: ${provider}:${model}`));
 
   if (providerModule.initialize) {
     await providerModule.initialize();

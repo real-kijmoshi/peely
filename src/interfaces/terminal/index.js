@@ -3,6 +3,7 @@ const chalk = require("chalk");
 const config = require("../../utils/config");
 const ai = require("../../ai");
 const memory = require("../../utils/memory");
+const PATHS = require("../../utils/paths");
 const ora = require("ora");
 
 // ── State ── (loaded from disk)
@@ -32,8 +33,10 @@ ${chalk.bold("  Commands:")}
     ${chalk.cyan("/help")}                  Show this help
     ${chalk.cyan("/clear")}                 Clear conversation history
     ${chalk.cyan("/model")}                 Switch AI model
+    ${chalk.cyan("/settings")}              Edit config, tokens & API keys
     ${chalk.cyan("/timers")}                Show active timers
     ${chalk.cyan("/plugins")}               List loaded plugins
+    ${chalk.cyan("/interfaces")}            List & create interfaces
     ${chalk.cyan("/pair discord <code>")}   Pair a Discord account
     ${chalk.cyan("/status")}                Show system status
     ${chalk.cyan("/exit")}                  Exit peely
@@ -81,7 +84,9 @@ const handleSlashCommand = async (input, rl) => {
       return true;
 
     case "model":
-      return "reset-readline"; // signal processLine to handle the rl reset
+      return { clack: true, run: async () => {
+        await ai.chooseModel();
+      }};
 
     case "status": {
       const model = config.get("ai.model") || chalk.dim("not set");
@@ -107,12 +112,9 @@ const handleSlashCommand = async (input, rl) => {
       if (parts[1] === "discord" && parts[2]) {
         const code = parts[2].toUpperCase();
         try {
-          const fs = require("fs");
-          if (!fs.existsSync("./data")) fs.mkdirSync("./data", { recursive: true });
-
           const { SqliteDriver, QuickDB } = require("quick.db");
           const db = new QuickDB({
-            driver: new SqliteDriver("./data/quick.db"),
+            driver: new SqliteDriver(PATHS.quickDb),
           });
 
           const userId = await db.get(`pairCode_${code}`);
@@ -184,6 +186,72 @@ const handleSlashCommand = async (input, rl) => {
       return true;
     }
 
+    case "interfaces":
+    case "interface": {
+      // @clack/prompts wizard needs exclusive stdin
+      return { clack: true, run: async () => {
+        const { listInterfaces, createInterface, deleteInterface } = require("../create_interface");
+        const { select, isCancel, log: cLog } = require("@clack/prompts");
+
+        const all = listInterfaces();
+        console.log();
+        console.log(chalk.bold("  Interfaces:"));
+        for (const iface of all) {
+          const tag = iface.type === "built-in"
+            ? chalk.dim("[built-in]")
+            : chalk.cyan("[custom]");
+          console.log(`    ${tag} ${chalk.bold(iface.name)} \u2014 ${iface.description}`);
+        }
+        console.log();
+
+        const action = await select({
+          message: "What would you like to do?",
+          options: [
+            { value: "create", label: "\uD83D\uDD27  Create new interface" },
+            { value: "delete", label: "\uD83D\uDDD1\uFE0F   Delete a custom interface",
+              hint: all.filter(i => i.type === "custom").length === 0 ? "none yet" : undefined },
+            { value: "back",   label: "\u2190   Back" },
+          ],
+        });
+
+        if (isCancel(action) || action === "back") return;
+
+        if (action === "create") {
+          await createInterface();
+          return;
+        }
+
+        if (action === "delete") {
+          const customs = all.filter(i => i.type === "custom");
+          if (customs.length === 0) {
+            cLog.warn("No custom interfaces to delete.");
+            return;
+          }
+          const which = await select({
+            message: "Which interface to delete?",
+            options: [
+              ...customs.map(i => ({ value: i.name, label: i.name, hint: i.description })),
+              { value: "back", label: "\u2190  Back" },
+            ],
+          });
+          if (isCancel(which) || which === "back") return;
+          if (deleteInterface(which)) {
+            cLog.success(`Deleted "${which}".`);
+          } else {
+            cLog.error(`Interface "${which}" not found.`);
+          }
+        }
+      }};
+    }
+
+    case "settings": {
+      // @clack/prompts needs exclusive stdin — signal processLine to handle it
+      return { clack: true, run: async () => {
+        const { settingsMenu } = require("../../utils/settings");
+        await settingsMenu();
+      }};
+    }
+
     default:
       console.log();
       printError(`Unknown command: /${cmd}. Type /help for commands.`);
@@ -234,11 +302,16 @@ const handleChat = async (input) => {
   }
 };
 
-// ── Flush stdin after @clack/prompts to avoid conflicts with readline ──
-const flushStdin = () => {
-  process.stdin.removeAllListeners();
+// ── Reclaim stdin after @clack/prompts so readline can re-attach ──
+const reclaimStdin = () => {
+  // Only remove "keypress" listeners left behind by @clack.
+  // NEVER remove "data" listeners — that kills the internal keypress-decoder
+  // pipe that readline.emitKeypressEvents() installs once on first use.
+  // A new readline.createInterface() sees the decoder symbol is already set
+  // and skips re-initialisation, so removing the data handler is fatal.
+  process.stdin.removeAllListeners("keypress");
   if (process.stdin.isTTY && process.stdin.setRawMode) {
-    process.stdin.setRawMode(false);
+    try { process.stdin.setRawMode(false); } catch (_) {}
   }
   process.stdin.pause();
 };
@@ -251,8 +324,6 @@ const start = async () => {
   if (!model) {
     console.log(chalk.yellow("  No AI model selected. Let's pick one first.\n"));
     await ai.chooseModel();
-    // @clack/prompts leaves stdin in a dirty state — clean it before readline
-    flushStdin();
   }
 
   console.log(
@@ -264,7 +335,7 @@ const start = async () => {
   let rl;
   let closeResolve;
   let processing = false;
-  let resettingRl = false;   // true while we intentionally destroy rl for /model
+  let intentionalClose = false;  // true while we close rl for @clack commands
 
   const createRl = () => {
     rl = readline.createInterface({
@@ -275,8 +346,14 @@ const start = async () => {
     });
 
     rl.on("line", (line) => processLine(line));
+
+    // Capture a reference so the handler always checks the *current* rl
+    const thisRl = rl;
     rl.on("close", () => {
-      if (resettingRl) return;   // intentional close — don't kill the loop
+      // Ignore if this is an intentional close (we're handing off to @clack)
+      if (intentionalClose) return;
+      // Ignore if this rl was already replaced by a newer one
+      if (thisRl !== rl) return;
       running = false;
       if (closeResolve) closeResolve();
     });
@@ -295,19 +372,26 @@ const start = async () => {
 
     try {
       if (input.startsWith("/")) {
-        const needsReset = await handleSlashCommand(input, rl);
-        // If the command used @clack prompts, rebuild readline
-        if (needsReset === "reset-readline") {
-          resettingRl = true;
-          rl.close();           // release stdin before @clack takes over
-          resettingRl = false;
-          await ai.chooseModel();
-          flushStdin();
+        const result = await handleSlashCommand(input, rl);
+
+        // @clack command — needs exclusive stdin control
+        if (result && result.clack) {
+          intentionalClose = true;
+          rl.close();
+          try {
+            await result.run();
+          } catch (err) {
+            printError(err.message);
+          }
+          reclaimStdin();
+          intentionalClose = false;
           createRl();
-          rl.prompt();
+          process.stdin.resume();
           processing = false;
+          rl.prompt();
           return;
         }
+
         if (!running) {
           rl.close();
           return;

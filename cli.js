@@ -6,6 +6,8 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
+const PATHS = require("./src/utils/paths");
+
 const args = process.argv.slice(2);
 const command = args[0];
 const subcommand = args[1];
@@ -16,6 +18,8 @@ const logo = `
   ${chalk.magenta("║")}  ${chalk.bold.white("🍌 peely")} ${chalk.dim("— your AI assistant")} ${chalk.magenta("║")}
   ${chalk.magenta("╚══════════════════════════════╝")}
 `;
+
+require("./src/utils/autoupdateInfo").checkUpdate();
 
 const showHelp = () => {
   console.log(logo);
@@ -33,13 +37,18 @@ const showHelp = () => {
   console.log(`    ${chalk.cyan("peely pair discord")} ${chalk.dim("<code>")}   Pair Discord account`);
   console.log(`    ${chalk.cyan("peely pair discord setup")}    Set Discord bot token`);
   console.log(`    ${chalk.cyan("peely model")}                 Choose AI model`);
+  console.log(`    ${chalk.cyan("peely settings")}              Edit config, tokens & API keys`);
+  console.log(`    ${chalk.cyan("peely interface create")}       Create a new custom interface`);
+  console.log(`    ${chalk.cyan("peely interface list")}         List all interfaces`);
+  console.log(`    ${chalk.cyan("peely interface start")} ${chalk.dim("<name>")} Start a custom interface`);
+  console.log(`    ${chalk.cyan("peely interface delete")} ${chalk.dim("<name>")} Delete a custom interface`);
   console.log(`    ${chalk.cyan("peely status")}                Show config status`);
   console.log(`    ${chalk.cyan("peely help")}                  Show this help`);
   console.log();
 };
 
-const PID_FILE = path.resolve(".peely.pid");
-const DAEMON_PID_FILE = path.resolve(".peely-daemon.pid");
+const PID_FILE = PATHS.pidFile;
+const DAEMON_PID_FILE = PATHS.daemonPidFile;
 
 const startBackground = async () => {
   if (fs.existsSync(PID_FILE)) {
@@ -54,8 +63,7 @@ const startBackground = async () => {
     }
   }
 
-  const logFile = path.resolve("./data/peely.log");
-  if (!fs.existsSync("./data")) fs.mkdirSync("./data", { recursive: true });
+  const logFile = PATHS.log;
   const out = fs.openSync(logFile, "a");
 
   const child = spawn(process.execPath, [__filename, "discord"], {
@@ -98,8 +106,7 @@ const startDaemon = async () => {
     }
   }
 
-  const logFile = path.resolve("./data/daemon.log");
-  if (!fs.existsSync("./data")) fs.mkdirSync("./data", { recursive: true });
+  const logFile = PATHS.daemonLog;
   const out = fs.openSync(logFile, "a");
 
   const daemonPath = path.join(__dirname, "src/daemon/index.js");
@@ -230,6 +237,7 @@ const showStatus = () => {
   console.log();
 };
 
+
 const pairDiscord = async (code) => {
   if (!code) {
     console.log(chalk.red("  ✗ Usage: peely pair discord <code>"));
@@ -237,11 +245,9 @@ const pairDiscord = async (code) => {
   }
 
   const { SqliteDriver, QuickDB } = require("quick.db");
-  const fs = require("fs");
-  if (!fs.existsSync("./data")) fs.mkdirSync("./data", { recursive: true });
 
   // quick.db SqliteDriver expects a string path
-  const db = new QuickDB({ driver: new SqliteDriver("./data/quick.db") });
+  const db = new QuickDB({ driver: new SqliteDriver(PATHS.quickDb) });
   const userId = await db.get(`pairCode_${code.toUpperCase()}`);
 
   if (!userId) {
@@ -261,10 +267,10 @@ const pairDiscord = async (code) => {
 };
 
 const setupDiscord = async () => {
-  const { text } = require("@clack/prompts");
+  const { text, isCancel } = require("@clack/prompts");
   console.log(logo);
   const token = await text({ message: "Enter your Discord Bot Token:" });
-  if (typeof token === "string" && token.trim()) {
+  if (!isCancel(token) && token && token.trim()) {
     config.set("interfaces.discord.token", token.trim());
     console.log(chalk.green("  ✓ Discord bot token saved!"));
   } else {
@@ -337,10 +343,16 @@ const oneShot = async (msg) => {
         await ai.chooseModel();
         break;
 
+      case "settings": {
+        const { settingsMenu } = require("./src/utils/settings");
+        await settingsMenu();
+        break;
+      }
+
       case "setup":
       case "onboarding":
       case "init": {
-        const { intro: setupIntro, confirm, text, select: setupSelect, isCancel } = require("@clack/prompts");
+        const { intro: setupIntro, confirm, text, isCancel } = require("@clack/prompts");
         console.log(logo);
         setupIntro(chalk.magenta("Welcome to peely! Let's get you set up."));
 
@@ -361,9 +373,9 @@ const oneShot = async (msg) => {
         if (wantDiscord) {
           const token = await text({
             message: "Paste your Discord Bot Token:",
-            placeholder: "(get one from discord.com/developers)",
+            placeholder: "get one from discord.com/developers",
           });
-          if (!isCancel(token) && typeof token === "string" && token.trim()) {
+          if (!isCancel(token) && token && token.trim()) {
             config.set("interfaces.discord.token", token.trim());
             console.log(chalk.green("  ✓ Discord bot token saved."));
           } else {
@@ -391,6 +403,59 @@ const oneShot = async (msg) => {
         config.set("onboarding.completed", true);
         console.log(chalk.green.bold("  ✓ Setup complete! Run \`peely\` to start chatting."));
         console.log();
+        break;
+      }
+
+      case "interface":
+      case "interfaces": {
+        const { createInterface, listInterfaces, loadCustomInterface, deleteInterface } = require("./src/interfaces/create_interface");
+
+        if (subcommand === "create" || subcommand === "new") {
+          await createInterface();
+        } else if (subcommand === "list" || subcommand === "ls") {
+          console.log(logo);
+          const all = listInterfaces();
+          console.log(chalk.bold("  Interfaces:"));
+          for (const iface of all) {
+            const tag = iface.type === "built-in"
+              ? chalk.dim("[built-in]")
+              : chalk.cyan("[custom]");
+            console.log(`    ${tag} ${chalk.bold(iface.name)} — ${iface.description}`);
+          }
+          console.log();
+        } else if (subcommand === "start" || subcommand === "run") {
+          const ifaceName = args[2];
+          if (!ifaceName) {
+            console.log(chalk.red("  ✗ Usage: peely interface start <name>"));
+            break;
+          }
+          // Try built-in interfaces first, then custom
+          const interfaces = require("./src/interfaces");
+          const mod = interfaces[ifaceName] || loadCustomInterface(ifaceName);
+          if (!mod || typeof mod.start !== "function") {
+            console.log(chalk.red(`  ✗ Interface "${ifaceName}" not found. Run peely interface list.`));
+            break;
+          }
+          await mod.start();
+        } else if (subcommand === "delete" || subcommand === "rm") {
+          const ifaceName = args[2];
+          if (!ifaceName) {
+            console.log(chalk.red("  ✗ Usage: peely interface delete <name>"));
+            break;
+          }
+          if (deleteInterface(ifaceName)) {
+            console.log(chalk.green(`  ✓ Deleted interface "${ifaceName}".`));
+          } else {
+            console.log(chalk.red(`  ✗ Interface "${ifaceName}" not found.`));
+          }
+        } else {
+          console.log(chalk.bold("  Interface commands:"));
+          console.log(`    ${chalk.cyan("peely interface create")}         Create a new custom interface`);
+          console.log(`    ${chalk.cyan("peely interface list")}           List all interfaces`);
+          console.log(`    ${chalk.cyan("peely interface start <name>")}  Start a custom interface`);
+          console.log(`    ${chalk.cyan("peely interface delete <name>")} Delete a custom interface`);
+          console.log();
+        }
         break;
       }
 

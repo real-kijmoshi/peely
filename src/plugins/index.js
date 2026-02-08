@@ -1,8 +1,9 @@
 const fs = require("fs");
 const path = require("path");
+const PATHS = require("../utils/paths");
 
 const BUILTIN_DIR = path.join(__dirname, "plugins");
-const CUSTOM_DIR = path.join(__dirname, "custom");
+const CUSTOM_DIR = PATHS.customPlugins;
 
 // Ensure custom dir exists
 if (!fs.existsSync(CUSTOM_DIR)) fs.mkdirSync(CUSTOM_DIR, { recursive: true });
