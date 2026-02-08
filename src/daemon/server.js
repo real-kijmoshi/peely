@@ -38,8 +38,8 @@ class DaemonServer {
   }
 
   async start() {
-    // Clean up stale socket
-    if (fs.existsSync(this.socketPath)) {
+    // Clean up stale socket (only on Unix — named pipes on Windows can't be unlinked this way)
+    if (process.platform !== "win32" && fs.existsSync(this.socketPath)) {
       try {
         fs.unlinkSync(this.socketPath);
       } catch (err) {
@@ -260,8 +260,8 @@ class DaemonServer {
       this.server.close();
     }
     
-    // Clean up socket file
-    if (fs.existsSync(this.socketPath)) {
+    // Clean up socket file (skip on Windows — named pipes can't be unlinked)
+    if (process.platform !== "win32" && fs.existsSync(this.socketPath)) {
       try {
         fs.unlinkSync(this.socketPath);
       } catch (err) {

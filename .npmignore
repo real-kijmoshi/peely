@@ -10,3 +10,4 @@ src/plugins/custom
 data
 npm-debug.log
 .DS_Store
+/site

@@ -3,44 +3,18 @@ const chalk = require("chalk");
 const config = require("../../utils/config");
 const ai = require("../../ai");
 const memory = require("../../utils/memory");
-const PATHS = require("../../utils/paths");
 const ora = require("ora");
+const cmds = require("./commands");
 
 // ── State ── (loaded from disk)
 const conversationHistory = memory.load("terminal");
 let running = true;
 
 // ── UI helpers ──
-const LOGO = (() => {
-  try {
-    const fs = require("fs");
-    const path = require("path");
-    const p = path.join(__dirname, "..", "..", "assets", "ascii-logo.txt");
-    const art = fs.readFileSync(p, "utf8");
-    return art
-      .split("\n")
-      .map((line) => (line.trim() === "" ? "" : chalk.magenta("  " + line)))
-      .join("\n")
-      + "\n\n" + chalk.bold.white("  🍌 peely") + " " + chalk.dim("— interactive mode") + "\n";
-  } catch (err) {
-    // Fallback banner
-    return `\n${chalk.magenta("  ____            _ _ _       ")}\n${chalk.magenta(" |  _ \\ ___  __ _(_) (_) ___  ")}\n${chalk.magenta(" | |_) / _ \\/ _\\` | | | |/ _ \\ ")}\n${chalk.magenta(" |  __/  __/ (_| | | | | (_) |")}\n${chalk.magenta(" |_|   \\___|\\__, |_|_|_|\\___/ ")}\n${chalk.magenta("            |___/              ")}\n\n${chalk.bold.white("  🍌 peely")} ${chalk.dim("— interactive mode")}\n`;
-  }
-})();
+const LOGO = cmds.interactiveLogo;
+const { printStatus, pairDiscord } = cmds;
 
-const HELP_TEXT = `
-${chalk.bold("  Commands:")}
-    ${chalk.cyan("/help")}                  Show this help
-    ${chalk.cyan("/clear")}                 Clear conversation history
-    ${chalk.cyan("/model")}                 Switch AI model
-    ${chalk.cyan("/settings")}              Edit config, tokens & API keys
-    ${chalk.cyan("/timers")}                Show active timers
-    ${chalk.cyan("/plugins")}               List loaded plugins
-    ${chalk.cyan("/interfaces")}            List & create interfaces
-    ${chalk.cyan("/pair discord <code>")}   Pair a Discord account
-    ${chalk.cyan("/status")}                Show system status
-    ${chalk.cyan("/exit")}                  Exit peely
-`;
+const HELP_TEXT = cmds.buildSlashHelp();
 
 const printSeparator = () => {
   console.log(chalk.dim("  " + "─".repeat(50)));
@@ -84,56 +58,23 @@ const handleSlashCommand = async (input, rl) => {
       return true;
 
     case "model":
-      return { clack: true, run: async () => {
-        await ai.chooseModel();
-      }};
+      return { clack: true, run: () => cmds.chooseModel() };
 
-    case "status": {
-      const model = config.get("ai.model") || chalk.dim("not set");
-      const discord = config.get("interfaces.discord.token")
-        ? chalk.green("configured")
-        : chalk.red("not set");
-      const github = config.get("github.token")
-        ? chalk.green("authorized")
-        : chalk.red("not set");
-      const msgs = conversationHistory.length;
-
-      console.log();
-      console.log(chalk.bold("  Status:"));
-      console.log(`    AI Model:      ${model}`);
-      console.log(`    GitHub:        ${github}`);
-      console.log(`    Discord:       ${discord}`);
-      console.log(`    Messages:      ${msgs}`);
-      console.log();
+    case "status":
+      printStatus({ messageCount: conversationHistory.length });
       return true;
-    }
 
     case "pair": {
       if (parts[1] === "discord" && parts[2]) {
         const code = parts[2].toUpperCase();
         try {
-          const { SqliteDriver, QuickDB } = require("quick.db");
-          const db = new QuickDB({
-            driver: new SqliteDriver(PATHS.quickDb),
-          });
-
-          const userId = await db.get(`pairCode_${code}`);
-          if (!userId) {
-            console.log();
-            printError(`Invalid or expired pair code: ${code}`);
-            console.log();
-            return true;
-          }
-
-          await db.set(`paired_${userId}`, true);
-          await db.delete(`pairCode_${code}`);
-          config.set("interfaces.discord.pairedUsers", [
-            ...(config.get("interfaces.discord.pairedUsers") || []),
-            userId,
-          ]);
-
+          const result = await pairDiscord(code);
           console.log();
-          printSuccess(`Paired Discord user ${userId}!`);
+          if (result.ok) {
+            printSuccess(`Paired Discord user ${result.userId}!`);
+          } else {
+            printError(result.error);
+          }
           console.log();
         } catch (err) {
           console.log();
@@ -157,99 +98,22 @@ const handleSlashCommand = async (input, rl) => {
       return true;
 
     case "timers": {
-      const { events } = require("../../utils/events");
-      const scheduled = events.listScheduled();
-      console.log();
-      if (scheduled.length === 0) {
-        console.log(chalk.dim("  No active timers."));
-      } else {
-        console.log(chalk.bold("  Active timers:"));
-        for (const t of scheduled) {
-          const secs = Math.ceil(t.remainingMs / 1000);
-          const desc = t.meta?.task || t.meta?.message || t.id;
-          console.log(`    ⏱️  ${t.id} — ${secs}s left — ${desc}`);
-        }
-      }
-      console.log();
+      cmds.printTimers();
       return true;
     }
 
     case "plugins": {
-      const pluginModule = require("../../plugins");
-      console.log();
-      console.log(chalk.bold("  Loaded plugins:"));
-      for (const p of pluginModule.plugins) {
-        const toolCount = p.tools ? Object.keys(p.tools).length : 0;
-        console.log(`    • ${chalk.cyan(p.name)} — ${toolCount} tool(s) — ${p.description || ""}`);
-      }
-      console.log();
+      cmds.printPlugins();
       return true;
     }
 
     case "interfaces":
     case "interface": {
-      // @clack/prompts wizard needs exclusive stdin
-      return { clack: true, run: async () => {
-        const { listInterfaces, createInterface, deleteInterface } = require("../create_interface");
-        const { select, isCancel, log: cLog } = require("@clack/prompts");
-
-        const all = listInterfaces();
-        console.log();
-        console.log(chalk.bold("  Interfaces:"));
-        for (const iface of all) {
-          const tag = iface.type === "built-in"
-            ? chalk.dim("[built-in]")
-            : chalk.cyan("[custom]");
-          console.log(`    ${tag} ${chalk.bold(iface.name)} \u2014 ${iface.description}`);
-        }
-        console.log();
-
-        const action = await select({
-          message: "What would you like to do?",
-          options: [
-            { value: "create", label: "\uD83D\uDD27  Create new interface" },
-            { value: "delete", label: "\uD83D\uDDD1\uFE0F   Delete a custom interface",
-              hint: all.filter(i => i.type === "custom").length === 0 ? "none yet" : undefined },
-            { value: "back",   label: "\u2190   Back" },
-          ],
-        });
-
-        if (isCancel(action) || action === "back") return;
-
-        if (action === "create") {
-          await createInterface();
-          return;
-        }
-
-        if (action === "delete") {
-          const customs = all.filter(i => i.type === "custom");
-          if (customs.length === 0) {
-            cLog.warn("No custom interfaces to delete.");
-            return;
-          }
-          const which = await select({
-            message: "Which interface to delete?",
-            options: [
-              ...customs.map(i => ({ value: i.name, label: i.name, hint: i.description })),
-              { value: "back", label: "\u2190  Back" },
-            ],
-          });
-          if (isCancel(which) || which === "back") return;
-          if (deleteInterface(which)) {
-            cLog.success(`Deleted "${which}".`);
-          } else {
-            cLog.error(`Interface "${which}" not found.`);
-          }
-        }
-      }};
+      return { clack: true, run: () => cmds.interfaceMenu() };
     }
 
     case "settings": {
-      // @clack/prompts needs exclusive stdin — signal processLine to handle it
-      return { clack: true, run: async () => {
-        const { settingsMenu } = require("../../utils/settings");
-        await settingsMenu();
-      }};
+      return { clack: true, run: () => cmds.openSettings() };
     }
 
     default:
@@ -276,6 +140,12 @@ const handleChat = async (input) => {
 
     const reply = response.content || "...";
     conversationHistory.push({ role: "assistant", content: reply });
+
+    // Keep history manageable (same limits as daemon/discord)
+    if (conversationHistory.length > 80) {
+      conversationHistory.splice(0, conversationHistory.length - 60);
+    }
+
     memory.save("terminal", conversationHistory);
 
     console.log();
@@ -419,4 +289,4 @@ const start = async () => {
   });
 };
 
-module.exports = { start };
+module.exports = { start, ...cmds };

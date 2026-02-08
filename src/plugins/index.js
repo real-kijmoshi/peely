@@ -12,7 +12,18 @@ if (!fs.existsSync(CUSTOM_DIR)) fs.mkdirSync(CUSTOM_DIR, { recursive: true });
 const builtinList = fs.readdirSync(BUILTIN_DIR).filter((f) => f.endsWith(".js"));
 const plugins = builtinList.map((f) => {
     const plugin = require(`./plugins/${f}`);
-    if (plugin.initialize) plugin.initialize();
+    if (plugin.initialize) {
+        try {
+            const result = plugin.initialize();
+            if (result && typeof result.catch === "function") {
+                result.catch((err) =>
+                    console.error(`⚠️  Plugin ${f} init error:`, err.message)
+                );
+            }
+        } catch (err) {
+            console.error(`⚠️  Plugin ${f} init error:`, err.message);
+        }
+    }
     return plugin;
 });
 

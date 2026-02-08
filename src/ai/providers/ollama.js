@@ -8,9 +8,8 @@ const chat = async (messages, options = {}) => {
         const response = await ollama.chat({
             model: (config.get("ai.model") || "ollama:undefined").replace("ollama:", ""),
             messages,
-            maxTokens,
-            temperature,
-            stream
+            stream,
+            options: { num_predict: maxTokens, temperature },
         });
         // Normalize: ollama returns { message: { role, content } }
         // but ai/index.js expects { content: "..." } at the top level

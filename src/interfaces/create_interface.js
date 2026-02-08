@@ -20,9 +20,13 @@ const template = (name, description, type) => {
  * ${description}
  */
 
-const config = require("peely/src/utils/config");
-const ai = require("peely/src/ai");
-const memory = require("peely/src/utils/memory");
+const path = require("path");
+
+// Resolve paths relative to the peely package root
+const peelyRoot = path.resolve(__dirname, "..", "..", "..", "..", "..");
+const config = require(path.join(peelyRoot, "src/utils/config"));
+const ai = require(path.join(peelyRoot, "src/ai"));
+const memory = require(path.join(peelyRoot, "src/utils/memory"));
 const chalk = require("chalk");
 
 // Load / create conversation history for this interface

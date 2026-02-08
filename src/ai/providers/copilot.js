@@ -136,6 +136,25 @@ const ensureValidCopilotToken = async () => {
   return copilotToken;
 };
 
+/** Parse Copilot API response with null-guards to avoid cryptic errors */
+const parseCopilotResponse = (data) => {
+  const choice = data?.choices?.[0];
+  if (!choice) throw new Error("No choices in Copilot API response");
+  return {
+    content: choice.message?.content || "",
+    role: choice.message?.role || "assistant",
+    finishReason: choice.finish_reason,
+    model: data.model,
+    usage: {
+      promptTokens: data.usage?.prompt_tokens || 0,
+      completionTokens: data.usage?.completion_tokens || 0,
+      totalTokens: data.usage?.total_tokens || 0,
+    },
+    id: data.id,
+    raw: data,
+  };
+};
+
 /**
  * Send a chat message to GitHub Copilot
  * @param {Array|string} messages - Either an array of message objects [{role, content}] or a string
@@ -177,21 +196,7 @@ const chat = async (messages, options = {}) => {
     );
 
     // Parse and return the response in a clean format
-    const data = res.data;
-    return {
-      content: data.choices[0].message.content,
-      role: data.choices[0].message.role,
-      finishReason: data.choices[0].finish_reason,
-      model: data.model,
-      usage: {
-        promptTokens: data.usage.prompt_tokens,
-        completionTokens: data.usage.completion_tokens,
-        totalTokens: data.usage.total_tokens,
-      },
-      id: data.id,
-      // Include raw response for advanced use cases
-      raw: data,
-    };
+    return parseCopilotResponse(res.data);
   } catch (err) {
     // If token expired, try refreshing once
     if (err.response?.status === 401) {
@@ -212,20 +217,7 @@ const chat = async (messages, options = {}) => {
         },
       );
 
-      const data = retryRes.data;
-      return {
-        content: data.choices[0].message.content,
-        role: data.choices[0].message.role,
-        finishReason: data.choices[0].finish_reason,
-        model: data.model,
-        usage: {
-          promptTokens: data.usage.prompt_tokens,
-          completionTokens: data.usage.completion_tokens,
-          totalTokens: data.usage.total_tokens,
-        },
-        id: data.id,
-        raw: data,
-      };
+      return parseCopilotResponse(retryRes.data);
     }
 
     throw err;

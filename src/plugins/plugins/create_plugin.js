@@ -69,6 +69,30 @@ RULES:
 10. Do NOT include any text outside the JavaScript code.
 11. When the plugin needs to trigger actions, USE ai.invoke() instead of hardcoding logic.`;
 
+// ── Dangerous pattern scanner for generated code ──
+const DANGEROUS_PATTERNS = [
+  /\bchild_process\b/,
+  /\bexec\s*\(/,
+  /\bexecSync\s*\(/,
+  /\bspawn\s*\(/,
+  /\beval\s*\(/,
+  /\bFunction\s*\(/,
+  /\bprocess\.env\b/,
+  /\bprocess\.exit\b/,
+  /\bglobal\./,
+  /\brequire\s*\(\s*['"]child_process['"]/,
+];
+
+const scanForDangerousPatterns = (code) => {
+  const matches = [];
+  for (const pat of DANGEROUS_PATTERNS) {
+    if (pat.test(code)) {
+      matches.push(pat.source);
+    }
+  }
+  return matches;
+};
+
 // ── The actual tool functions ──
 
 /**
@@ -114,6 +138,16 @@ const createPlugin = async (name, description) => {
     new Function("require", "module", "exports", "__dirname", "__filename", code);
   } catch (err) {
     return `ERROR: Generated code has a syntax error: ${err.message}. Try again with a simpler description.`;
+  }
+
+  // Scan for dangerous patterns (security check)
+  const dangers = scanForDangerousPatterns(code);
+  if (dangers.length > 0) {
+    return (
+      `\u26a0\ufe0f BLOCKED: Generated plugin code contains potentially dangerous patterns:\n` +
+      dangers.map((d) => `  \u2022 ${d}`).join("\n") +
+      `\n\nThe code was NOT saved. Try a safer description or review the generated code manually.`
+    );
   }
 
   fs.writeFileSync(filePath, code, "utf-8");
@@ -175,6 +209,16 @@ const editPlugin = async (name, changes) => {
     new Function("require", "module", "exports", "__dirname", "__filename", code);
   } catch (err) {
     return `ERROR: Updated code has a syntax error: ${err.message}. Try again.`;
+  }
+
+  // Scan for dangerous patterns (security check)
+  const dangers = scanForDangerousPatterns(code);
+  if (dangers.length > 0) {
+    return (
+      `\u26a0\ufe0f BLOCKED: Updated plugin code contains potentially dangerous patterns:\n` +
+      dangers.map((d) => `  \u2022 ${d}`).join("\n") +
+      `\n\nThe code was NOT saved. Try a safer modification or review the generated code manually.`
+    );
   }
 
   // Backup old version

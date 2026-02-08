@@ -22,6 +22,7 @@ const ENTRIES = [
 const mask = (val) => {
   if (!val) return "not set";
   const s = String(val);
+  if (s.length <= 6) return "•".repeat(s.length);
   return s.slice(0, 6) + "•".repeat(Math.min(s.length - 6, 20));
 };
 

@@ -17,6 +17,18 @@ const authorize = async () => {
 };
 
 const getApiKey = () => config.get("ai.openaiKey");
+
+// Cache the OpenAI client instance to reuse connection pooling
+let _cachedClient = null;
+let _cachedApiKey = null;
+const getClient = () => {
+  const apiKey = getApiKey();
+  if (!_cachedClient || _cachedApiKey !== apiKey) {
+    _cachedClient = new openai.OpenAI({ apiKey });
+    _cachedApiKey = apiKey;
+  }
+  return _cachedClient;
+};
     
 const initialize = async () => {
     if (!getApiKey()) {
@@ -28,9 +40,7 @@ const initialize = async () => {
 const chat = async (messages, options = {}) => {
   const { maxTokens = 2048, temperature = 0.7, stream = false } = options;
 
-  const apiKey = getApiKey();
-
-  const client = new openai.OpenAI({ apiKey });
+  const client = getClient();
 
   const completion = await client.chat.completions.create({
     model: config.get("ai.model").replace("openai:", ""),
@@ -59,10 +69,9 @@ const chat = async (messages, options = {}) => {
 }
 
 const models = async () => {
-  const apiKey = getApiKey();
     try {
-        const openaiClient = new openai.OpenAI({ apiKey });
-        const response = await openaiClient.models.list();
+        const client = getClient();
+        const response = await client.models.list();
         return (response.data || []).map(m => ({id: m.id, name: m.id}));
     }
     catch (err) {

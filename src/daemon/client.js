@@ -65,10 +65,17 @@ class DaemonClient {
       const message = { type, payload };
       this.socket.write(JSON.stringify(message) + "\n");
 
+      // Overall timeout to prevent infinite polling
+      const RESPONSE_TIMEOUT = 30000;
+      const timeout = setTimeout(() => {
+        reject(new Error("Response timeout — daemon did not respond within 30s"));
+      }, RESPONSE_TIMEOUT);
+
       // Wait for response
       const checkResponse = () => {
         const newlineIndex = this.responseBuffer.indexOf("\n");
         if (newlineIndex !== -1) {
+          clearTimeout(timeout);
           const line = this.responseBuffer.slice(0, newlineIndex);
           this.responseBuffer = this.responseBuffer.slice(newlineIndex + 1);
           

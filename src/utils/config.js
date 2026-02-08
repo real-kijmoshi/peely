@@ -4,20 +4,26 @@ const PATHS = require("./paths");
 const CONFIG_PATH = PATHS.config;
 
 if (!fs.existsSync(CONFIG_PATH)) {
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify({}, null, 4));
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify({}, null, 4), { mode: 0o600 });
 }
 
+// In-memory cache to avoid redundant synchronous disk I/O
+let _configCache = null;
+
 const readConfig = () => {
+  if (_configCache) return _configCache;
   try {
     const raw = fs.readFileSync(CONFIG_PATH, "utf8");
-    return JSON.parse(raw || "{}");
+    _configCache = JSON.parse(raw || "{}");
+    return _configCache;
   } catch (err) {
     return {};
   }
 };
 
 const writeConfig = (cfg) => {
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 4));
+  _configCache = cfg;
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 4), { mode: 0o600 });
 };
 
 const get = (key) => {

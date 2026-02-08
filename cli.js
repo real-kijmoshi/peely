@@ -7,61 +7,26 @@ const fs = require("fs");
 const path = require("path");
 
 const PATHS = require("./src/utils/paths");
+const tui = require("./src/interfaces/terminal");
+const { logo, pairDiscord: sharedPairDiscord, printStatus, checkPidFile } = tui;
 
 const args = process.argv.slice(2);
 const command = args[0];
 const subcommand = args[1];
 
-// ── Logo ──
-const logo = `
-  ${chalk.magenta("╔══════════════════════════════╗")}
-  ${chalk.magenta("║")}  ${chalk.bold.white("🍌 peely")} ${chalk.dim("— your AI assistant")} ${chalk.magenta("║")}
-  ${chalk.magenta("╚══════════════════════════════╝")}
-`;
-
-require("./src/utils/autoupdateInfo").checkUpdate();
-
-const showHelp = () => {
-  console.log(logo);
-  console.log(chalk.bold("  Usage:"));
-  console.log(`    ${chalk.cyan("peely")}                       Start interactive TUI`);
-  console.log(`    ${chalk.cyan("peely setup")}                 First-time onboarding wizard`);
-  console.log(`    ${chalk.cyan("peely chat")} ${chalk.dim("<message>")}        One-shot chat (connects to daemon)`);
-  console.log(`    ${chalk.cyan("peely daemon start")}          Start daemon in background`);
-  console.log(`    ${chalk.cyan("peely daemon stop")}           Stop daemon`);
-  console.log(`    ${chalk.cyan("peely daemon restart")}        Restart daemon (for updates)`);
-  console.log(`    ${chalk.cyan("peely daemon status")}         Show daemon status`);
-  console.log(`    ${chalk.cyan("peely start")}                 Legacy: Run Discord bot in background`);
-  console.log(`    ${chalk.cyan("peely stop")}                  Legacy: Stop background process`);
-  console.log(`    ${chalk.cyan("peely discord")}               Start Discord bot only`);
-  console.log(`    ${chalk.cyan("peely pair discord")} ${chalk.dim("<code>")}   Pair Discord account`);
-  console.log(`    ${chalk.cyan("peely pair discord setup")}    Set Discord bot token`);
-  console.log(`    ${chalk.cyan("peely model")}                 Choose AI model`);
-  console.log(`    ${chalk.cyan("peely settings")}              Edit config, tokens & API keys`);
-  console.log(`    ${chalk.cyan("peely interface create")}       Create a new custom interface`);
-  console.log(`    ${chalk.cyan("peely interface list")}         List all interfaces`);
-  console.log(`    ${chalk.cyan("peely interface start")} ${chalk.dim("<name>")} Start a custom interface`);
-  console.log(`    ${chalk.cyan("peely interface delete")} ${chalk.dim("<name>")} Delete a custom interface`);
-  console.log(`    ${chalk.cyan("peely status")}                Show config status`);
-  console.log(`    ${chalk.cyan("peely help")}                  Show this help`);
-  console.log();
-};
+require("./src/utils/autoupdateInfo").checkUpdate().catch(() => {});
 
 const PID_FILE = PATHS.pidFile;
 const DAEMON_PID_FILE = PATHS.daemonPidFile;
 
 const startBackground = async () => {
-  if (fs.existsSync(PID_FILE)) {
-    const oldPid = fs.readFileSync(PID_FILE, "utf-8").trim();
-    try {
-      process.kill(Number(oldPid), 0); // check if alive
-      console.log(chalk.yellow(`  ✗ peely already running (pid ${oldPid}).`));
-      return;
-    } catch (_) {
-      // stale pid file
-      fs.unlinkSync(PID_FILE);
-    }
+  const { alive, pid: oldPid } = checkPidFile(PID_FILE);
+  if (alive) {
+    console.log(chalk.yellow(`  ✗ peely already running (pid ${oldPid}).`));
+    return;
   }
+  // Clean stale PID file
+  if (oldPid && !alive && fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE);
 
   const logFile = PATHS.log;
   const out = fs.openSync(logFile, "a");
@@ -72,6 +37,7 @@ const startBackground = async () => {
   });
 
   child.unref();
+  fs.closeSync(out); // Close FD in parent to prevent leak
   fs.writeFileSync(PID_FILE, String(child.pid), "utf-8");
   console.log(chalk.green(`  ✓ Started peely in background (pid ${child.pid}).`));
   console.log(chalk.dim(`  Logs: ${logFile}`));
@@ -95,16 +61,13 @@ const stopBackground = async () => {
 
 // ── Daemon commands ──
 const startDaemon = async () => {
-  if (fs.existsSync(DAEMON_PID_FILE)) {
-    const oldPid = fs.readFileSync(DAEMON_PID_FILE, "utf-8").trim();
-    try {
-      process.kill(Number(oldPid), 0);
-      console.log(chalk.yellow(`  ✗ Daemon already running (pid ${oldPid}).`));
-      return;
-    } catch (_) {
-      fs.unlinkSync(DAEMON_PID_FILE);
-    }
+  const { alive, pid: oldPid } = checkPidFile(DAEMON_PID_FILE);
+  if (alive) {
+    console.log(chalk.yellow(`  ✗ Daemon already running (pid ${oldPid}).`));
+    return;
   }
+  // Clean stale PID file
+  if (oldPid && !alive && fs.existsSync(DAEMON_PID_FILE)) fs.unlinkSync(DAEMON_PID_FILE);
 
   const logFile = PATHS.daemonLog;
   const out = fs.openSync(logFile, "a");
@@ -116,6 +79,7 @@ const startDaemon = async () => {
   });
 
   child.unref();
+  fs.closeSync(out); // Close FD in parent to prevent leak
   fs.writeFileSync(DAEMON_PID_FILE, String(child.pid), "utf-8");
   console.log(chalk.green(`  ✓ Started daemon (pid ${child.pid}).`));
   console.log(chalk.dim(`  Logs: ${logFile}`));
@@ -138,7 +102,7 @@ const stopDaemon = async () => {
     
     console.log(chalk.green("  ✓ Daemon stopped gracefully."));
     return;
-  } catch (err) {
+  } catch (_ipcErr) {
     // Fall back to SIGTERM if IPC fails
     if (!fs.existsSync(DAEMON_PID_FILE)) {
       console.log(chalk.yellow("  ✗ No daemon process found."));
@@ -150,8 +114,8 @@ const stopDaemon = async () => {
       process.kill(pid, "SIGTERM");
       fs.unlinkSync(DAEMON_PID_FILE);
       console.log(chalk.green(`  ✓ Stopped daemon (pid ${pid}).`));
-    } catch (err) {
-      console.log(chalk.red("  ✗ Failed to stop daemon:"), err.message);
+    } catch (killErr) {
+      console.log(chalk.red("  ✗ Failed to stop daemon:"), killErr.message);
     }
   }
 };
@@ -170,18 +134,7 @@ const restartDaemon = async () => {
 const daemonStatus = async () => {
   console.log(logo);
   
-  let daemonRunning = false;
-  let daemonPid = null;
-  
-  if (fs.existsSync(DAEMON_PID_FILE)) {
-    daemonPid = fs.readFileSync(DAEMON_PID_FILE, "utf-8").trim();
-    try {
-      process.kill(Number(daemonPid), 0);
-      daemonRunning = true;
-    } catch (_) {
-      daemonPid = null;
-    }
-  }
+  const { alive: daemonRunning, pid: daemonPid } = checkPidFile(DAEMON_PID_FILE);
   
   console.log(chalk.bold("  Daemon Status:"));
   
@@ -214,64 +167,31 @@ const daemonStatus = async () => {
 
 const showStatus = () => {
   console.log(logo);
-  const model = config.get("ai.model") || chalk.dim("not set");
-  const discord = config.get("interfaces.discord.token") ? chalk.green("configured") : chalk.red("not set");
-  const github = config.get("github.token") ? chalk.green("authorized") : chalk.red("not set");
 
   let bgStatus = chalk.dim("not running");
-  if (fs.existsSync(PID_FILE)) {
-    const pid = fs.readFileSync(PID_FILE, "utf-8").trim();
-    try {
-      process.kill(Number(pid), 0);
-      bgStatus = chalk.green(`running (pid ${pid})`);
-    } catch (_) {
-      bgStatus = chalk.yellow("stale pid file");
-    }
+  const { alive, pid } = checkPidFile(PID_FILE);
+  if (alive) {
+    bgStatus = chalk.green(`running (pid ${pid})`);
+  } else if (pid) {
+    bgStatus = chalk.yellow("stale pid file");
   }
 
-  console.log(chalk.bold("  Status:"));
-  console.log(`    AI Model:    ${model}`);
-  console.log(`    GitHub:      ${github}`);
-  console.log(`    Discord:     ${discord}`);
-  console.log(`    Background:  ${bgStatus}`);
-  console.log();
+  printStatus({ background: bgStatus });
 };
 
-
 const pairDiscord = async (code) => {
-  if (!code) {
-    console.log(chalk.red("  ✗ Usage: peely pair discord <code>"));
-    return;
+  const result = await sharedPairDiscord(code);
+  if (result.ok) {
+    console.log(chalk.green(`  ✓ Successfully paired Discord user ${result.userId}!`));
+  } else {
+    console.log(chalk.red(`  ✗ ${result.error}`));
   }
-
-  const { SqliteDriver, QuickDB } = require("quick.db");
-
-  // quick.db SqliteDriver expects a string path
-  const db = new QuickDB({ driver: new SqliteDriver(PATHS.quickDb) });
-  const userId = await db.get(`pairCode_${code.toUpperCase()}`);
-
-  if (!userId) {
-    console.log(chalk.red(`  ✗ Invalid or expired pair code: ${code}`));
-    return;
-  }
-
-  // Store the pairing
-  await db.set(`paired_${userId}`, true);
-  await db.delete(`pairCode_${code.toUpperCase()}`);
-  config.set("interfaces.discord.pairedUsers", [
-    ...(config.get("interfaces.discord.pairedUsers") || []),
-    userId,
-  ]);
-
-  console.log(chalk.green(`  ✓ Successfully paired Discord user ${userId}!`));
 };
 
 const setupDiscord = async () => {
-  const { text, isCancel } = require("@clack/prompts");
   console.log(logo);
-  const token = await text({ message: "Enter your Discord Bot Token:" });
-  if (!isCancel(token) && token && token.trim()) {
-    config.set("interfaces.discord.token", token.trim());
+  const result = await tui.setupDiscordToken();
+  if (result.ok) {
     console.log(chalk.green("  ✓ Discord bot token saved!"));
   } else {
     console.log(chalk.red("  ✗ Cancelled."));
@@ -284,16 +204,7 @@ const oneShot = async (msg) => {
   
   try {
     // Try to use daemon if running
-    let daemonRunning = false;
-    if (fs.existsSync(DAEMON_PID_FILE)) {
-      try {
-        const pid = Number(fs.readFileSync(DAEMON_PID_FILE, "utf-8").trim());
-        process.kill(pid, 0);
-        daemonRunning = true;
-      } catch (_) {
-        daemonRunning = false;
-      }
-    }
+    const { alive: daemonRunning } = checkPidFile(DAEMON_PID_FILE);
     
     let response;
     
@@ -331,7 +242,7 @@ const oneShot = async (msg) => {
       case "help":
       case "--help":
       case "-h":
-        showHelp();
+        tui.printCliHelp(logo);
         break;
 
       case "status":
@@ -339,28 +250,24 @@ const oneShot = async (msg) => {
         break;
 
       case "model":
-        const ai = require("./src/ai");
-        await ai.chooseModel();
+        await tui.chooseModel();
         break;
 
-      case "settings": {
-        const { settingsMenu } = require("./src/utils/settings");
-        await settingsMenu();
+      case "settings":
+        await tui.openSettings();
         break;
-      }
 
       case "setup":
       case "onboarding":
       case "init": {
-        const { intro: setupIntro, confirm, text, isCancel } = require("@clack/prompts");
+        const { intro: setupIntro, confirm, isCancel } = require("@clack/prompts");
         console.log(logo);
         setupIntro(chalk.magenta("Welcome to peely! Let's get you set up."));
 
         // Step 1: AI provider
         console.log();
         console.log(chalk.bold("  Step 1: ") + "Connect to an AI provider");
-        const aiModule = require("./src/ai");
-        await aiModule.chooseModel();
+        await tui.chooseModel();
 
         // Step 2: Interfaces
         console.log();
@@ -371,12 +278,8 @@ const oneShot = async (msg) => {
         if (isCancel(wantDiscord)) break;
 
         if (wantDiscord) {
-          const token = await text({
-            message: "Paste your Discord Bot Token:",
-            placeholder: "get one from discord.com/developers",
-          });
-          if (!isCancel(token) && token && token.trim()) {
-            config.set("interfaces.discord.token", token.trim());
+          const result = await tui.setupDiscordToken();
+          if (result.ok) {
             console.log(chalk.green("  ✓ Discord bot token saved."));
           } else {
             console.log(chalk.dim("  Skipped. Run \`peely pair discord setup\` later."));
@@ -408,42 +311,28 @@ const oneShot = async (msg) => {
 
       case "interface":
       case "interfaces": {
-        const { createInterface, listInterfaces, loadCustomInterface, deleteInterface } = require("./src/interfaces/create_interface");
-
         if (subcommand === "create" || subcommand === "new") {
-          await createInterface();
+          await tui.createInterface();
         } else if (subcommand === "list" || subcommand === "ls") {
           console.log(logo);
-          const all = listInterfaces();
-          console.log(chalk.bold("  Interfaces:"));
-          for (const iface of all) {
-            const tag = iface.type === "built-in"
-              ? chalk.dim("[built-in]")
-              : chalk.cyan("[custom]");
-            console.log(`    ${tag} ${chalk.bold(iface.name)} — ${iface.description}`);
-          }
-          console.log();
+          tui.printInterfaces();
         } else if (subcommand === "start" || subcommand === "run") {
           const ifaceName = args[2];
           if (!ifaceName) {
             console.log(chalk.red("  ✗ Usage: peely interface start <name>"));
             break;
           }
-          // Try built-in interfaces first, then custom
-          const interfaces = require("./src/interfaces");
-          const mod = interfaces[ifaceName] || loadCustomInterface(ifaceName);
-          if (!mod || typeof mod.start !== "function") {
+          const ok = await tui.startInterface(ifaceName);
+          if (!ok) {
             console.log(chalk.red(`  ✗ Interface "${ifaceName}" not found. Run peely interface list.`));
-            break;
           }
-          await mod.start();
         } else if (subcommand === "delete" || subcommand === "rm") {
           const ifaceName = args[2];
           if (!ifaceName) {
             console.log(chalk.red("  ✗ Usage: peely interface delete <name>"));
             break;
           }
-          if (deleteInterface(ifaceName)) {
+          if (tui.deleteInterface(ifaceName)) {
             console.log(chalk.green(`  ✓ Deleted interface "${ifaceName}".`));
           } else {
             console.log(chalk.red(`  ✗ Interface "${ifaceName}" not found.`));
@@ -521,9 +410,8 @@ const oneShot = async (msg) => {
         // First-run: auto-launch onboarding if never completed
         if (!config.get("onboarding.completed") && !command) {
           console.log(chalk.yellow("  First time? Running setup wizard...\n"));
-          // Re-invoke with setup
+          // Re-run as setup by modifying argv and re-entering the switch
           process.argv.push("setup");
-          const { execFileSync } = require("child_process");
           try {
             require("child_process").execSync(`"${process.execPath}" "${__filename}" setup`, {
               stdio: "inherit",
@@ -541,7 +429,6 @@ const oneShot = async (msg) => {
             console.error(chalk.red("  Discord error:"), err.message)
           );
         }
-        const tui = require("./src/interfaces/terminal");
         await tui.start();
         break;
     }

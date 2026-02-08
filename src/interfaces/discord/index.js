@@ -21,11 +21,17 @@ const getDb = async () => {
 };
 
 // ── Per-user conversation memory (persistent) ──
-// In-memory cache backed by disk
+// In-memory cache backed by disk, with LRU eviction
+const MAX_CACHED_CONVERSATIONS = 100;
 const conversations = new Map();
 
 const getConversation = (userId) => {
   if (!conversations.has(userId)) {
+    // Evict oldest entry if cache is full
+    if (conversations.size >= MAX_CACHED_CONVERSATIONS) {
+      const oldest = conversations.keys().next().value;
+      conversations.delete(oldest);
+    }
     // Load from disk on first access
     conversations.set(userId, memory.load(`discord-${userId}`));
   }
@@ -141,9 +147,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (commandName === "pair") {
       const database = await getDb();
       const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-      await database.set(`pairCode_${code}`, user.id);
+      // Store with timestamp so expiry survives process restarts
+      await database.set(`pairCode_${code}`, { userId: user.id, createdAt: Date.now() });
 
-      // Expire after 5 minutes
+      // Best-effort in-process cleanup after 5 minutes
       setTimeout(async () => {
         await database.delete(`pairCode_${code}`).catch(() => {});
       }, 5 * 60 * 1000);
@@ -229,9 +236,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-// ── Message handler (all messages) ──
+// ── Message handler (DMs and mentions only) ──
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
+
+  // Only respond in DMs or when the bot is mentioned
+  const isDM = !message.guild;
+  const isMentioned = message.mentions.has(client.user);
+  if (!isDM && !isMentioned) return;
+
   console.log(chalk.dim(`  [msg] ${message.author.tag}: ${message.content.slice(0, 50)}`));
 
   let content = message.content.replace(/<@!?\d+>/g, "").trim();

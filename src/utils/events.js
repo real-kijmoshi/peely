@@ -16,7 +16,7 @@ const EventEmitter = require("events");
  * and when the event fires it triggers the callback (e.g. send a Discord message).
  */
 
-class peelyEvents extends EventEmitter {
+class PeelyEvents extends EventEmitter {
   constructor() {
     super();
     this.setMaxListeners(100);
@@ -66,6 +66,6 @@ class peelyEvents extends EventEmitter {
   }
 }
 
-const events = new peelyEvents();
+const events = new PeelyEvents();
 
 module.exports = { events };

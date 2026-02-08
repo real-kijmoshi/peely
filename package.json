@@ -1,6 +1,6 @@
 {
   "name": "peely",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "main": "cli.js",
   "bin": {
     "peely": "cli.js"
@@ -33,6 +33,9 @@
   "homepage": "https://github.com/real-kijmoshi/peely#readme",
   "license": "MIT",
   "description": "Your personal AI assistant",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
     "axios": "^1.13.4",

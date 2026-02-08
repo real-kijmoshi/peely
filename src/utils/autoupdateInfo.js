@@ -27,6 +27,17 @@ const center = (text, width) => {
     return " ".repeat(left) + text + " ".repeat(right);
 };
 
+/** Compare two semver strings. Returns true if a > b. */
+const semverGt = (a, b) => {
+    const pa = a.split(".").map(Number);
+    const pb = b.split(".").map(Number);
+    for (let i = 0; i < 3; i++) {
+        if ((pa[i] || 0) > (pb[i] || 0)) return true;
+        if ((pa[i] || 0) < (pb[i] || 0)) return false;
+    }
+    return false;
+};
+
 const checkUpdate = async () => {
     const newest = await axios
         .get(NPM_URL)
@@ -36,7 +47,7 @@ const checkUpdate = async () => {
     if (!newest) return;
 
     const pkgVersion = require("../../package.json").version;
-    if (newest <= pkgVersion) return;
+    if (!semverGt(newest, pkgVersion)) return;
     
     console.log("");
     const title = chalk.bold("🚀 Peely Update Available");
