@@ -14,6 +14,12 @@
 
 </div>
 
+<div align="center">
+
+![Demo of Peely in action, showing terminal interactions and Discord bot responses](demo.gif)
+
+</div>
+
 ---
 
 ## 🌟 Features

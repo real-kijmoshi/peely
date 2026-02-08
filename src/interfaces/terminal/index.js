@@ -107,11 +107,6 @@ const handleSlashCommand = async (input, rl) => {
       return true;
     }
 
-    case "interfaces":
-    case "interface": {
-      return { clack: true, run: () => cmds.interfaceMenu() };
-    }
-
     case "settings": {
       return { clack: true, run: () => cmds.openSettings() };
     }

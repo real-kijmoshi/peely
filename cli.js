@@ -309,45 +309,6 @@ const oneShot = async (msg) => {
         break;
       }
 
-      case "interface":
-      case "interfaces": {
-        if (subcommand === "create" || subcommand === "new") {
-          await tui.createInterface();
-        } else if (subcommand === "list" || subcommand === "ls") {
-          console.log(logo);
-          tui.printInterfaces();
-        } else if (subcommand === "start" || subcommand === "run") {
-          const ifaceName = args[2];
-          if (!ifaceName) {
-            console.log(chalk.red("  ✗ Usage: peely interface start <name>"));
-            break;
-          }
-          const ok = await tui.startInterface(ifaceName);
-          if (!ok) {
-            console.log(chalk.red(`  ✗ Interface "${ifaceName}" not found. Run peely interface list.`));
-          }
-        } else if (subcommand === "delete" || subcommand === "rm") {
-          const ifaceName = args[2];
-          if (!ifaceName) {
-            console.log(chalk.red("  ✗ Usage: peely interface delete <name>"));
-            break;
-          }
-          if (tui.deleteInterface(ifaceName)) {
-            console.log(chalk.green(`  ✓ Deleted interface "${ifaceName}".`));
-          } else {
-            console.log(chalk.red(`  ✗ Interface "${ifaceName}" not found.`));
-          }
-        } else {
-          console.log(chalk.bold("  Interface commands:"));
-          console.log(`    ${chalk.cyan("peely interface create")}         Create a new custom interface`);
-          console.log(`    ${chalk.cyan("peely interface list")}           List all interfaces`);
-          console.log(`    ${chalk.cyan("peely interface start <name>")}  Start a custom interface`);
-          console.log(`    ${chalk.cyan("peely interface delete <name>")} Delete a custom interface`);
-          console.log();
-        }
-        break;
-      }
-
       case "pair":
         if (subcommand === "discord") {
           const codeOrSetup = args[2];

@@ -204,104 +204,6 @@ const printPlugins = () => {
   console.log();
 };
 
-// ── Interfaces ────────────────────────────────────────────────────
-
-const getInterfaces = () => {
-  const { listInterfaces } = require("../create_interface");
-  return listInterfaces();
-};
-
-const printInterfaces = () => {
-  const all = getInterfaces();
-  console.log();
-  console.log(chalk.bold("  Interfaces:"));
-  for (const iface of all) {
-    const tag =
-      iface.type === "built-in"
-        ? chalk.dim("[built-in]")
-        : chalk.cyan("[custom]");
-    console.log(`    ${tag} ${chalk.bold(iface.name)} — ${iface.description}`);
-  }
-  console.log();
-};
-
-const createInterface = async () => {
-  const creator = require("../create_interface");
-  await creator.createInterface();
-};
-
-const deleteInterface = (name) => {
-  const { deleteInterface: del } = require("../create_interface");
-  return del(name);
-};
-
-const startInterface = async (name) => {
-  const interfaces = require("../");
-  const { loadCustomInterface } = require("../create_interface");
-  const mod = interfaces[name] || loadCustomInterface(name);
-  if (!mod || typeof mod.start !== "function") return false;
-  await mod.start();
-  return true;
-};
-
-/**
- * Interactive interface management menu (@clack).
- */
-const interfaceMenu = async () => {
-  const { select, isCancel, log: cLog } = require("@clack/prompts");
-
-  printInterfaces();
-
-  const all = getInterfaces();
-  const action = await select({
-    message: "What would you like to do?",
-    options: [
-      { value: "create", label: "🔧  Create new interface" },
-      {
-        value: "delete",
-        label: "🗑️   Delete a custom interface",
-        hint:
-          all.filter((i) => i.type === "custom").length === 0
-            ? "none yet"
-            : undefined,
-      },
-      { value: "back", label: "←   Back" },
-    ],
-  });
-
-  if (isCancel(action) || action === "back") return;
-
-  if (action === "create") {
-    await createInterface();
-    return;
-  }
-
-  if (action === "delete") {
-    const customs = all.filter((i) => i.type === "custom");
-    if (customs.length === 0) {
-      cLog.warn("No custom interfaces to delete.");
-      return;
-    }
-    const which = await select({
-      message: "Which interface to delete?",
-      options: [
-        ...customs.map((i) => ({
-          value: i.name,
-          label: i.name,
-          hint: i.description,
-        })),
-        { value: "back", label: "←  Back" },
-      ],
-    });
-    if (isCancel(which) || which === "back") return;
-    if (deleteInterface(which)) {
-      cLog.success(`Deleted "${which}".`);
-    } else {
-      cLog.error(`Interface "${which}" not found.`);
-    }
-  }
-};
-
 // ═══════════════════════════════════════════════════════════════════
 //  Help text
 // ═══════════════════════════════════════════════════════════════════
@@ -321,10 +223,6 @@ const CLI_COMMANDS = [
   { usage: "peely pair discord setup", desc: "Set Discord bot token" },
   { usage: "peely model", desc: "Choose AI model" },
   { usage: "peely settings", desc: "Edit config, tokens & API keys" },
-  { usage: "peely interface create", desc: "Create a new custom interface" },
-  { usage: "peely interface list", desc: "List all interfaces" },
-  { usage: "peely interface start <name>", desc: "Start a custom interface" },
-  { usage: "peely interface delete <name>", desc: "Delete a custom interface" },
   { usage: "peely status", desc: "Show config status" },
   { usage: "peely help", desc: "Show this help" },
 ];
@@ -336,7 +234,6 @@ const SLASH_COMMANDS = [
   { usage: "/settings", desc: "Edit config, tokens & API keys" },
   { usage: "/timers", desc: "Show active timers" },
   { usage: "/plugins", desc: "List loaded plugins" },
-  { usage: "/interfaces", desc: "List & create interfaces" },
   { usage: "/pair discord <code>", desc: "Pair a Discord account" },
   { usage: "/status", desc: "Show system status" },
   { usage: "/exit", desc: "Exit peely" },
@@ -386,12 +283,6 @@ module.exports = {
   printTimers,
   getPlugins,
   printPlugins,
-  getInterfaces,
-  printInterfaces,
-  createInterface,
-  deleteInterface,
-  startInterface,
-  interfaceMenu,
 
   // Help
   CLI_COMMANDS,

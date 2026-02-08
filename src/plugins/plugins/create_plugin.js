@@ -9,6 +9,9 @@ const CUSTOM_DIR = PATHS.customPlugins;
 if (!fs.existsSync(CUSTOM_DIR)) fs.mkdirSync(CUSTOM_DIR, { recursive: true });
 
 // ── Agent system prompt ──
+// __PEELY_ROOT__ is replaced at runtime with the actual package root path
+const PEELY_ROOT = path.resolve(__dirname, "..", "..", "..");
+
 const AGENT_PROMPT = `You are a plugin code generator for peely (a Node.js AI assistant).
 
 Your job: generate a complete, working plugin file based on the user's description.
@@ -40,8 +43,8 @@ Plugins can trigger the AI to perform any task using ai.invoke(task).
 This is the preferred way to make things happen — describe WHAT, let the AI figure out HOW.
 
 \`\`\`js
-// Lazy-load to avoid circular dependency
-const ai = require("../../ai");
+// ALWAYS use this exact require path — it works from any plugin location:
+const ai = require("${PEELY_ROOT.replace(/\\/g, "/")}/src/ai");
 await ai.invoke("send a Discord DM to username saying hello");
 await ai.invoke("search for weather in Warsaw and tell me");
 \`\`\`
@@ -52,7 +55,7 @@ Use ai.invoke() when:
 - You want the AI to decide which tools to use based on context
 
 AVAILABLE UTILITIES:
-- const { events } = require("../../utils/events") — event bus for async events
+- const { events } = require("${PEELY_ROOT.replace(/\\/g, "/")}/src/utils/events") — event bus
   events.on("eventName", callback) / events.emit("eventName", data)
   events.scheduleTimeout(id, ms, callback, meta) / events.cancelTimeout(id)
 
@@ -67,7 +70,8 @@ RULES:
 8. Plugin name must be lowercase with underscores, no spaces.
 9. Keep it simple and focused. One plugin = one domain of functionality.
 10. Do NOT include any text outside the JavaScript code.
-11. When the plugin needs to trigger actions, USE ai.invoke() instead of hardcoding logic.`;
+11. When the plugin needs to trigger actions, USE ai.invoke() instead of hardcoding logic.
+12. For AI/utility requires, ALWAYS use the absolute paths shown above. NEVER use relative paths like "../../ai".`;
 
 // ── Dangerous pattern scanner for generated code ──
 const DANGEROUS_PATTERNS = [

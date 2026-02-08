@@ -17,7 +17,6 @@ const dirs = [
   path.join(DATA_HOME, "data"),
   path.join(DATA_HOME, "data", "conversations"),
   path.join(DATA_HOME, "plugins", "custom"),
-  path.join(DATA_HOME, "interfaces", "custom"),
 ];
 
 for (const d of dirs) {
@@ -55,9 +54,6 @@ const PATHS = {
 
   /** plugins/custom/ directory for user-created plugins */
   customPlugins: path.join(DATA_HOME, "plugins", "custom"),
-
-  /** interfaces/custom/ directory for user-created interfaces */
-  customInterfaces: path.join(DATA_HOME, "interfaces", "custom"),
 };
 
 // ── One-time migration from old (in-project) layout ──

@@ -35,6 +35,14 @@ const buildSystemPrompt = (registry) => {
     })
     .join("\n");
 
+  // Build a dynamic "prefer specific tools" hint from actual plugin names
+  const pluginNames = [...new Set(Object.values(registry).map((t) => t.pluginName))];
+  const toolHint = pluginNames.length > 0
+    ? `You have these tool categories: ${pluginNames.join(", ")}. ` +
+      "Pick the most specific tool for the job. " +
+      "Only fall back to search (if available) when no specific tool exists."
+    : "You have no tools available. Answer from your own knowledge.";
+
     return `You are peely 🍌 - a personal AI assistant with actual personality.
 
   -- WHO YOU ARE --
@@ -52,14 +60,15 @@ const buildSystemPrompt = (registry) => {
   - You're allowed to be a little weird, a little opinionated, a little charming. You're peely 🍌, not a customer service bot.
 
   -- YOUR TOOLS --
+  These are the ONLY tools you have. The tool ID format is pluginName.toolName.
   ${toolDescriptions}
 
   -- RULES --
   1. When a tool can help, CALL IT IMMEDIATELY. Don't narrate what you're about to do - just do it.
     Output the tool call JSON. NEVER announce a tool call without actually making it.
-  2. ALWAYS prefer the most specific tool for the job:
-    Weather -> weather tools. Facts -> search.search. Math -> math tools. Discord -> discord tools.
-    Only fall back to search.search if no specific tool exists.
+  2. ${toolHint}
+    NEVER invent tool IDs that are not listed above. If a tool doesn't exist in the list, it doesn't exist. Period.
+    The tool ID MUST match exactly — use the full "pluginName.toolName" format shown above.
   3. To call a tool, reply with ONLY this JSON (no other text before or after):
     {"tool_calls":[{"id":"search.search","args":["query"]}]}
     You may call multiple tools at once.
@@ -73,6 +82,8 @@ const buildSystemPrompt = (registry) => {
   9. BEFORE calling an ACTION tool (sending messages, etc.), make sure you have ALL required info.
     If something's missing, ask. Don't guess. Don't send empty messages.
     Read-only tools (search, list, math) can be called freely.
+  10. Use tools when possible. Don't just say "I would use X tool here" - actually use it. The tools are your superpower - use them to help the user in ways you couldn't on your own.
+  11. You're peely 🍌 - be friendly, helpful, and a little fun. Don't be a boring robot.
 
     thank you for being you, peely 🍌. I hope you'll have fun :) - developer of peely 🍌
   `;
@@ -155,15 +166,39 @@ const executeTool = async (call, registry) => {
 // ── Try to parse tool_calls JSON from assistant text ──
 const parseToolCalls = (text) => {
   if (!text) return null;
+
+  // 1. Entire response is JSON (most common path)
   try {
-    // Find JSON that contains "tool_calls" — avoid matching unrelated JSON
-    const match = text.match(/\{[\s\S]*?"tool_calls"\s*:\s*\[[\s\S]*?\]\s*\}/);
-    if (!match) return null;
-    const obj = JSON.parse(match[0]);
+    const obj = JSON.parse(text.trim());
     if (Array.isArray(obj.tool_calls) && obj.tool_calls.length > 0) {
       return obj.tool_calls;
     }
   } catch (_) {}
+
+  // 2. JSON embedded in surrounding text — find balanced braces
+  const idx = text.indexOf('"tool_calls"');
+  if (idx === -1) return null;
+
+  const start = text.lastIndexOf("{", idx);
+  if (start === -1) return null;
+
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    if (text[i] === "{") depth++;
+    else if (text[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        try {
+          const obj = JSON.parse(text.slice(start, i + 1));
+          if (Array.isArray(obj.tool_calls) && obj.tool_calls.length > 0) {
+            return obj.tool_calls;
+          }
+        } catch (_) {}
+        break;
+      }
+    }
+  }
+
   return null;
 };
 

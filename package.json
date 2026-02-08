@@ -1,6 +1,6 @@
 {
   "name": "peely",
-  "version": "0.9.5",
+  "version": "0.9.51",
   "main": "cli.js",
   "bin": {
     "peely": "cli.js"
